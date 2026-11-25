@@ -11,6 +11,7 @@
 <body>
   <main id="game" aria-label="DOWNFALL — гра про падіння">
     <canvas id="world" aria-label="Ігрове поле"></canvas>
+    <canvas id="title-foreground" aria-hidden="true" hidden></canvas>
     <div class="grain" aria-hidden="true"></div>
     <div id="hud" hidden>
       <div class="vitals"><div id="health" aria-label="Здоров’я"></div><div class="currency"><span class="gem">◆</span><b id="shards">0</b><span id="combo"></span></div></div>
@@ -25,9 +26,9 @@
     </div>
     <div class="top-actions"><button id="sound" class="icon-btn" aria-label="Вимкнути звук" title="Звук · M">♪</button><button id="pause-button" class="icon-btn" aria-label="Пауза" title="Пауза · Esc" hidden>Ⅱ</button></div>
     <section id="title" class="screen title-screen">
-      <div class="title-copy"><div class="eyebrow"><span class="rune">✧</span> РОУГЛАЙК У ВІЛЬНОМУ ПАДІННІ</div><h1><span>DOWN</span><span>FALL<i>↡</i></span></h1><p class="title-description">У серце прірви.</p><p class="title-sub">Пробивайся крізь потвор. Збирай мутації.<br>Дізнайся, що ховається на дні.</p><button id="start" class="primary">ПІРНУТИ ВНИЗ <span>↓</span></button><div class="start-hint"><kbd>ENTER</kbd> почати падіння</div><div class="best-line">РЕКОРД <b id="title-best">0 м</b></div></div>
+      <div class="title-copy"><div class="eyebrow"><span class="rune">✧</span> РОУГЛАЙК У ВІЛЬНОМУ ПАДІННІ</div><h1><span>DOWN</span><span>FALL<i>↡</i></span></h1><p class="title-description">У серце прірви.</p><p class="title-sub">Пробивайся крізь потвор. Збирай мутації.<br>Дізнайся, що ховається на дні.</p><div class="level-picker" aria-label="Вибір рівня"><div class="level-heading">ОБЕРИ ГЛИБИНУ <span>← / →</span></div><div id="levels" class="levels"></div><div id="level-requirement" class="level-requirement" aria-live="polite"></div></div><button id="start" class="primary">ПІРНУТИ ВНИЗ <span>↓</span></button><div class="start-hint"><kbd>ENTER</kbd> почати падіння</div><div class="best-line">РЕКОРД <b id="title-best">0 м</b></div></div>
       <div class="title-place"><span class="tiny-diamond">◆</span><span>ЗАТОНУЛИЙ ХРАМ<small>ПЕРША ГЛИБИНА</small></span></div>
-      <div class="title-controls"><span><kbd>A</kbd><kbd>D</kbd> РУХ</span><span><kbd>SPACE</kbd> РИВОК</span><span><kbd>SHIFT</kbd> ФОКУС</span></div>
+      <button id="dev-unlock" class="dev-unlock" aria-pressed="false">Розблокувати всі рівні</button><div class="title-controls"><span><kbd>A</kbd><kbd>D</kbd> РУХ</span><span><kbd>SPACE</kbd> РИВОК</span><span><kbd>SHIFT</kbd> ФОКУС</span></div>
     </section>
     <section id="pause" class="screen shade" hidden><div class="menu"><span class="menu-mark">Ⅱ</span><h2>Пауза</h2><button id="resume" class="primary">ПРОДОВЖИТИ <span>↘</span></button><button id="restart" class="secondary">НОВЕ ПАДІННЯ</button><div class="pause-controls"><p><kbd>A</kbd> <kbd>D</kbd> або <kbd>←</kbd> <kbd>→</kbd> — керування в повітрі</p><p><kbd>SPACE</kbd> / <kbd>↓</kbd> — ривок униз</p><p><kbd>SHIFT</kbd> — уповільнення часу</p><p><kbd>ESC</kbd> — пауза · <kbd>M</kbd> — звук</p></div><p class="mechanic-note">Проминь світлий обідок ворога без дотику: +20 фокусу.<br>Гриб, призма й кільце підкидають угору.<br>Перший контакт дає заряд. A / D — рух у повітрі.<br>Вбивство ривком також повертає заряд.</p><div id="music-now"></div></div></section>
     <section id="upgrade" class="screen shade" hidden><div class="upgrade-wrap"><div class="eyebrow">ПРІРВА ЗМІНЮЄ ТЕБЕ</div><h2>Обери мутацію</h2><p class="upgrade-sub">+1 заряд · +15 фокусу · Здоров’я не відновлюється</p><div id="upgrade-cards"></div><div class="upgrade-hint">Клавіші <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> або натисни на мутацію</div></div></section>

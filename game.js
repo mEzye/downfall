@@ -3,6 +3,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const canvas = $('world'), ctx = canvas.getContext('2d', { alpha:false });
+const foregroundCanvas=$('title-foreground'),foregroundCtx=foregroundCanvas.getContext('2d');
 const TAU = Math.PI * 2, clamp = (n,a,b) => Math.max(a,Math.min(b,n)), rand = (a,b) => a+Math.random()*(b-a);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const content=window.DownfallContent;
@@ -14,12 +15,40 @@ let best=0,muted=false;
 try { best=Number(localStorage.getItem('downfall-best-v2'))||0; muted=localStorage.getItem('downfall-muted')==='true'; } catch {}
 $('title-best').textContent=best+' м';
 const palettes=[
- {name:'ЗАТОНУЛИЙ ХРАМ',layer:'ШАР I',bg:'#091e25',back:'#102c33',rock:'#1d3c40',light:'#34564f',edge:'#668375',moss:'#59806a',accent:'#99d6b1',fog:'#183f40'},
- {name:'ГРИБНЕ СЕРЦЕ',layer:'ШАР II',bg:'#17192d',back:'#25283e',rock:'#373b51',light:'#4b5264',edge:'#7a8190',moss:'#8e839b',accent:'#cf9ce3',fog:'#383450'},
- {name:'ВУГІЛЬНА БЕЗОДНЯ',layer:'ШАР III',bg:'#291a24',back:'#39272e',rock:'#503332',light:'#704a40',edge:'#aa7860',moss:'#b47f51',accent:'#f2aa6c',fog:'#58332b'}
+ {name:'ЗАТОНУЛИЙ ХРАМ',layer:'ШАР I',bg:'#091e25',column:'#0c252d',back:'#102c33',shadow:'#091c23',rock:'#1d3c40',light:'#34564f',edge:'#668375',moss:'#59806a',accent:'#99d6b1',fog:'#183f40'},
+ {name:'ГРИБНЕ СЕРЦЕ',layer:'ШАР II',bg:'#17192d',column:'#1e2036',back:'#25283e',shadow:'#121424',rock:'#373b51',light:'#4b5264',edge:'#7a8190',moss:'#8e839b',accent:'#cf9ce3',fog:'#383450'},
+ {name:'ВУГІЛЬНА БЕЗОДНЯ',layer:'ШАР III',bg:'#291a24',column:'#322029',back:'#39272e',shadow:'#22151c',rock:'#503332',light:'#704a40',edge:'#aa7860',moss:'#b47f51',accent:'#f2aa6c',fog:'#58332b'}
 ];
 let biome=0,pal=palettes[0],backCache=null,wallCache=null,glows={};
 let effects=[],coachTimer=0,grazeTimer=0;
+let selectedLevel=0,startingLevel=0,completedBosses=0,devUnlock=false,titleTransition=null;
+let titleScroll=0;
+const titleCrossingDuration=1.25;
+const titleIdleSpeed=34;
+const titleFarSpeed=.54;
+const titleWallSpeed=.98;
+try { completedBosses=Number(localStorage.getItem('downfall-bosses-v1'))||0; } catch {}
+function isUnlocked(i){return i===0||!!(completedBosses & (1<<(i-1)));}
+function updateLevelMenu(){
+ $('levels').innerHTML=palettes.map((p,i)=>`<button type="button" data-level="${i}" class="level-button${i===selectedLevel?' selected':''}" aria-pressed="${i===selectedLevel}" aria-label="${p.name}${!isUnlocked(i)&&!devUnlock?' — заблоковано':''}"><span>${i+1}</span>${!isUnlocked(i)&&!devUnlock?' 🔒':''}</button>`).join('');
+ $('level-requirement').textContent=!isUnlocked(1)&&!devUnlock?'II: переможи Дзвонаря':!isUnlocked(2)&&!devUnlock?'III: переможи Спорову Матір':palettes[selectedLevel].name;
+ document.querySelector('.title-place span:last-child').innerHTML=palettes[selectedLevel].name+'<small>'+palettes[selectedLevel].layer+'</small>';
+ $('dev-unlock').textContent=devUnlock?'Повернути блокування':'Розблокувати всі рівні';$('dev-unlock').setAttribute('aria-pressed',String(devUnlock));
+}
+function selectLevel(i){
+ if(i<0||i>2||i===selectedLevel||(!devUnlock&&!isUnlocked(i)))return;
+ selectedLevel=i;
+ if(!titleTransition)changeTitleBiome();
+ updateLevelMenu();
+ audio.event('level-select');
+}
+function changeTitleBiome(){
+ if(biome===selectedLevel)return;
+ const outgoing={biome,pal,backCache,wallCache};
+ biome=selectedLevel;pal=palettes[biome];buildScenery();
+ titleTransition=reduced?null:{outgoing,start:time,scrollStart:titleScroll,distance:H*2.25+200};
+ if(titleTransition)audio.wallPass(titleCrossingDuration);
+}
 
 // A restrained procedural score: wind, a sub drone, staggered minor arpeggios,
 // and short, event-specific transients. All voices have finite envelopes.
@@ -54,6 +83,31 @@ const audio={ctx:null,master:null,music:null,wind:null,next:0,step:0,active:0,th
   if(!this.ctx||muted||this.active>44)return;const a=this.ctx,t=a.currentTime;
   const s=a.createBufferSource(),filter=a.createBiquadFilter(),g=a.createGain();s.buffer=this.noiseBuffer;filter.type='lowpass';filter.frequency.value=f;g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+d);s.connect(filter);filter.connect(g);g.connect(this.master);this.active++;s.start(t,0,Math.min(d,.95));s.onended=()=>{s.disconnect();filter.disconnect();g.disconnect();this.active--;};
  },
+ wallPass(duration){
+  if(!this.ctx||muted||this.active>=44)return;
+  const context=this.ctx;
+  const start=context.currentTime+duration*.12;
+  const nearest=context.currentTime+duration*.43;
+  const end=context.currentTime+duration*.94;
+  const air=context.createBufferSource();
+  const filter=context.createBiquadFilter();
+  const gain=context.createGain();
+  air.buffer=this.noiseBuffer;
+  air.loop=true;
+  filter.type='lowpass';
+  filter.frequency.value=560;
+  filter.Q.value=.15;
+  gain.gain.setValueAtTime(.001,start);
+  gain.gain.linearRampToValueAtTime(.075,nearest);
+  gain.gain.linearRampToValueAtTime(.04,nearest+duration*.17);
+  gain.gain.exponentialRampToValueAtTime(.001,end);
+  air.connect(filter);filter.connect(gain);gain.connect(this.master);
+  this.active++;
+  air.onended=()=>{air.disconnect();filter.disconnect();gain.disconnect();this.active--;};
+  air.start(start);air.stop(end);
+  this.tone(68,.16,'triangle',.1,56,duration*.40);
+  this.tone(48,.22,'triangle',.063,42,duration*.47);
+ },
  event(name,n=0){
   if(name==='dash'){this.noise(.16,.14,2600);this.tone(210,.19,'sawtooth',.055,42);}
   if(name==='kill'){this.noise(.13,.16,1400);this.tone(90,.14,'triangle',.2,28);this.tone(330*Math.pow(1.075,Math.min(n,12)),.17,'square',.035,550);}
@@ -61,6 +115,7 @@ const audio={ctx:null,master:null,music:null,wind:null,next:0,step:0,active:0,th
   if(name==='hurt'){this.noise(.33,.25,650);this.tone(130,.3,'sawtooth',.12,33);}
   if(name==='near'){this.tone(440,.22,'sine',.06,880);}
   if(name==='empty'){this.tone(85,.08,'triangle',.07,60);}
+  if(name==='level-select'){this.noise(.045,.085,1900);this.tone(245,.07,'triangle',.065,140);}
   if(name==='upgrade'){[220,277.18,329.63,440,659.25].forEach((f,i)=>this.tone(f,.7,'sine',.09,0,i*.085));}
   if(name==='select'){[440,659.25,880].forEach((f,i)=>this.tone(f,.25,'triangle',.09,0,i*.08));}
   if(name==='death'){this.tone(165,1.5,'triangle',.15,28);this.noise(.8,.2,650);}
@@ -136,19 +191,21 @@ function buildScenery(){
  // Distant cut-stone architecture. Repeating vertically without a hard seam.
  for(let layer=0;layer<2;layer++){
   const spacing=layer?145:205,off=layer?62:10;
-  g.fillStyle=layer?pal.back:'#0c252d';
+  g.fillStyle=layer?pal.back:pal.column;
   for(let x=off-60;x<W+80;x+=spacing){g.fillRect(x,0,18,820);g.fillRect(x+29,0,8,820);for(let y=100;y<820;y+=205){g.fillRect(x-15,y,65,9);g.fillRect(x-7,y+9,49,6);g.fillRect(x+18,y+15,8,180);}}
  }
  for(let i=0;i<180;i++){g.fillStyle=i%3?pal.back:pal.light;g.globalAlpha=i%3?.25:.1;g.fillRect(rng(i+1)*W,rng(i+19)*820,2+rng(i+65)*5,2);}g.globalAlpha=1;
  if(biome===1){for(let i=0;i<6;i++){const x=rng(i+3)*W,y=i*136,w=35+rng(i+4)*45;g.fillStyle='#2e2b46';g.fillRect(x-5,y,10,120);g.fillRect(x-w,y,w*2,12);g.fillRect(x-w*.7,y-13,w*1.4,13);g.fillRect(x-w*.35,y-22,w*.7,9);g.fillStyle='#4b3c5f';g.fillRect(x-w+5,y+9,w*2-10,2);}}
  if(biome===2){for(let i=0;i<8;i++){const x=rng(i+17)*W,y=i*103;g.fillStyle='#493032';g.fillRect(x-3,y-45,6,90);g.fillRect(x-45,y-3,90,6);g.fillRect(x-28,y-28,56,56);g.fillStyle='#2c242e';g.fillRect(x-20,y-20,40,40);g.fillRect(x-6,y-6,12,12);}}
  wallCache=makeCanvas(110,768);const a=wallCache.getContext('2d');
- for(let y=0;y<768;y+=16){const edge=58+Math.floor(rng(y+18)*25);a.fillStyle='#091c23';a.fillRect(0,y,edge+10,17);a.fillStyle=pal.rock;a.fillRect(0,y,edge,16);a.fillStyle=pal.light;a.fillRect(0,y,edge-2,2);a.fillStyle=pal.back;a.fillRect(edge-5,y+6,5,10);for(let x=4;x<edge-8;x+=15){const r=rng(x+y*17);a.fillStyle=r>.5?pal.light:pal.back;a.fillRect(x,y+3+r*6,5+r*7,3);if(r>.7){a.fillStyle=pal.edge;a.fillRect(x,y+2,5,1);}}if(rng(y)> .55){a.fillStyle=pal.moss;a.fillRect(edge-6,y,7,4);a.fillRect(edge-4,y+4,3,7+rng(y+3)*12);}}
+ for(let y=0;y<768;y+=16){const edge=58+Math.floor(rng(y+18)*25);a.fillStyle=pal.shadow;a.fillRect(0,y,edge+10,17);a.fillStyle=pal.rock;a.fillRect(0,y,edge,16);a.fillStyle=pal.light;a.fillRect(0,y,edge-2,2);a.fillStyle=pal.back;a.fillRect(edge-5,y+6,5,10);for(let x=4;x<edge-8;x+=15){const r=rng(x+y*17);a.fillStyle=r>.5?pal.light:pal.back;a.fillRect(x,y+3+r*6,5+r*7,3);if(r>.7){a.fillStyle=pal.edge;a.fillRect(x,y+2,5,1);}}if(rng(y)> .55){a.fillStyle=pal.moss;a.fillRect(edge-6,y,7,4);a.fillRect(edge-4,y+4,3,7+rng(y+3)*12);}}
 }
 function resize(){
  const ratio=innerWidth/Math.max(1,innerHeight);H=Math.round(clamp(innerHeight/2.15,320,540));W=Math.round(H*ratio);
  if(W<280){W=280;H=Math.round(W/ratio);}if(W>1160){W=1160;H=Math.round(W/ratio);}
  canvas.width=W;canvas.height=H;ctx.imageSmoothingEnabled=false;dpr=innerWidth/W;
+ foregroundCanvas.width=W;foregroundCanvas.height=H;
+ if(state==='title'&&titleTransition){titleTransition=null;biome=selectedLevel;pal=palettes[biome];}
  buildScenery();if(player)player.x=clamp(player.x,playerEdge(),W-playerEdge());
 }
 function playerEdge(){return W<440?58:84;}
@@ -181,17 +238,17 @@ function setState(next){
  show('hud',!['title','ended'].includes(next));show('pause-button',['playing','paused','countdown'].includes(next));show('touch',matchMedia('(pointer:coarse)').matches&&next==='playing');
  keys.clear();heldTouch.clear();
 }
-function reset(){
- audio.init();biome=0;pal=palettes[0];buildScenery();
+function reset(level=startingLevel){
+ startingLevel=level;audio.init();biome=level;pal=palettes[level];buildScenery();titleTransition=null;
  seed=Math.random()*10000;cam=0;generated=450;entities=[];particles=[];trails=[];labels=[];effects=[];pendingUpgrade=false;shake=0;flash=0;hitstop=0;hintStarted=-1;coachTimer=0;grazeTimer=0;show('coach',false);$('graze-notice').classList.remove('show');document.querySelector('.focus-track').classList.remove('graze');
- run={depth:0,deepestY:150,shards:0,collected:0,kills:0,combo:0,comboTime:0,bestCombo:0,maxHp:balance.startHp,maxCharges:balance.startCharges,recharge:balance.recharge,nextGate:250,fang:0,magnet:0,orbit:0,nova:0,vampire:false,nearHeal:false,nearCount:0,focusMod:1,comboDuration:4,chosen:[],boss:null,won:false,elapsed:0,previousBest:best};
+ run={depth:level*500,deepestY:150,shards:0,collected:0,kills:0,combo:0,comboTime:0,bestCombo:0,maxHp:balance.startHp,maxCharges:balance.startCharges,recharge:balance.recharge,nextGate:level*500+250,fang:0,magnet:0,orbit:0,nova:0,vampire:false,nearHeal:false,nearCount:0,focusMod:1,comboDuration:4,chosen:[],boss:null,won:false,elapsed:0,previousBest:best};
  player={x:W/2,y:150,vx:0,vy:110,hp:balance.startHp,charges:balance.startCharges,chargeTime:0,dashing:0,invuln:.8,focus:65,focusActive:false,scarf:[],lastX:W/2};
- Object.assign(run,{cleared:0,bounces:0,uniqueBounces:0,lightning:0,frost:0,ember:0,echo:0,ward:false,wardTime:0,storm:0,bloom:0,rebound:0,leech:false,harvest:0,taught:{},echoes:0,nearBest:0});
+ Object.assign(run,{cleared:level,bounces:0,uniqueBounces:0,lightning:0,frost:0,ember:0,echo:0,ward:false,wardTime:0,storm:0,bloom:0,rebound:0,leech:false,harvest:0,taught:{},echoes:0,nearBest:0});
  Object.assign(player,{boost:0,reboundTime:0,ward:false,echoPending:false,prevX:player.x,prevY:player.y});
  // A guaranteed ring introduces an upward rebound before random encounters.
  entities.push({type:'flow',x:W/2+50,y:355,used:false});
  $('hint').style.opacity='1';$('hint').innerHTML=matchMedia('(pointer:coarse)').matches?'‹ › — рух · ↓ — ривок · ◎ — фокус':'<span><kbd>A</kbd> <kbd>D</kbd> рух</span><span><kbd>SPACE</kbd> ривок крізь ворогів</span><span><kbd>SHIFT</kbd> уповільнення</span>';
- setState('playing');toast('ЗАТОНУЛИЙ ХРАМ',2.5);generate();updateHUD();
+ setState('playing');toast(pal.name,2.5);generate();updateHUD();
 }
 function toast(text,d=1.7){$('toast').textContent=text;$('toast').classList.add('show');toastTimer=d;}
 function teach(id,text,duration=5){if(run.taught[id]||(coachTimer>1&&!id.startsWith('boss')&&!id.endsWith('done')))return;run.taught[id]=true;$('coach').innerHTML=text;coachTimer=duration;show('coach',true);}
@@ -373,7 +430,7 @@ function fireAttack(b){
 }
 function defeatBoss(){
  const b=run.boss;detonate(b.x,b.y,150,b.color,'boss');effect('ring',b.x,b.y,b.color,230,1.1);audio.event('victory');shake=12;player.invuln=1;player.charges=Math.min(run.maxCharges,player.charges+1);player.focus=clamp(player.focus+20,0,100);player.hp=Math.min(run.maxHp,player.hp+balance.bossRewardHeal);run.shards+=35;
- run.cleared++;run.boss=null;run.deepestY=player.y;entities=entities.filter(e=>['gem','heal'].includes(e.type));
+ run.cleared++;if(b.id==='bell'||b.id==='mother'){completedBosses|=b.id==='bell'?1:2;try{localStorage.setItem('downfall-bosses-v1',String(completedBosses));}catch{}updateLevelMenu();}run.boss=null;run.deepestY=player.y;entities=entities.filter(e=>['gem','heal'].includes(e.type));
  if(run.cleared===3){end(true);return;}
  biome=run.cleared;pal=palettes[biome];buildScenery();generated=player.y+240;
  for(let i=0;i<12;i++)entities.push({type:'gem',x:W/2+Math.sin(i)*45,y:player.y+60+i*17,t:i});
@@ -527,11 +584,18 @@ function update(realDt){
 }
 
 function drawBackdrop(scroll,title=false){
+ drawCavernDepth(scroll,title);
+ drawCavernWalls(scroll);
+ drawCavernVignette();
+}
+function drawCavernDepth(scroll,title){
  ctx.fillStyle=pal.bg;ctx.fillRect(0,0,W,H);
- const by=-(scroll*.18)%820;ctx.drawImage(backCache,0,Math.floor(by));if(by+820<H)ctx.drawImage(backCache,0,Math.floor(by+820));
+ const by=-(scroll*(title?titleFarSpeed:.18))%820;
+ for(let y=by;y<H;y+=820)ctx.drawImage(backCache,0,Math.floor(y));
  // Waterlit shafts of light, drawn as discrete pixel bands.
- ctx.globalAlpha=.045;for(let i=0;i<5;i++){const x=(W*.19+i*W*.2+Math.sin(time*.1+i)*5);poly([[x-12,0],[x+15,0],[x-80,H],[x-125,H]],'#a5d7c0');}ctx.globalAlpha=1;
- const ringX=title?W*.73:W*.5,ringY=title?H*.44:((360-scroll*.1)%(H+350)+H+350)%(H+350)-100;
+ ctx.globalAlpha=.045;for(let i=0;i<5;i++){const x=(W*.19+i*W*.2+Math.sin(time*.1+i)*5);poly([[x-12,0],[x+15,0],[x-80,H],[x-125,H]],pal.accent);}ctx.globalAlpha=1;
+ const ringX=title?W*.73:W*.5;
+ const ringY=title?H+135-wrap(H*.56+135+scroll*titleFarSpeed,H+270):((360-scroll*.1)%(H+350)+H+350)%(H+350)-100;
  drawRing(ringX,ringY,title?111:125,title?.9:.35);
  // Parallax broken islands and masonry.
  const sy=scroll*.43;
@@ -548,8 +612,9 @@ function drawBackdrop(scroll,title=false){
  if(biome===0){for(let i=0;i<8;i++){const x=i%2?W-80-rng(i)*12:80+rng(i)*12,yy=((time*80+i*101-scroll*.6)%H+H)%H;rect(x,yy,1,7,'#69a2a344');}}
  if(biome===1){for(let i=0;i<(quality?12:5);i++){const x=rng(i+93)*W+Math.sin(time*.5+i)*12,y=((rng(i+17)*H-time*6-scroll*.25)%H+H)%H;rect(x,y,2,2,'#c6abd573');if(i%4===0)light(x,y,16,'#c7a0e4',.08);}}
  if(biome===2){for(let i=0;i<8;i++){const x=i%2?W-73:73,yy=((i*95-scroll*.5)%(H+100)+H+100)%(H+100)-50;rect(x,yy,2,25,'#ae6c4a');light(x,yy+10,35,'#eb9d64',.11);}}
- // Near walls from a cached pixel texture.
- const wy=-(scroll*.98)%768,wallWidth=W<440?76:110;
+}
+function drawCavernWalls(scroll){
+ const wy=-(scroll*titleWallSpeed)%768,wallWidth=W<440?76:110;
  for(let y=wy;y<H;y+=768){ctx.drawImage(wallCache,0,0,110,768,0,Math.floor(y),wallWidth,768);ctx.save();ctx.translate(W,Math.floor(y));ctx.scale(-1,1);ctx.drawImage(wallCache,0,0,110,768,0,0,wallWidth,768);ctx.restore();}
  for(let side=0;side<2;side++){
   for(let i=0;i<5;i++){
@@ -557,7 +622,8 @@ function drawBackdrop(scroll,title=false){
    if(i%2===0)drawLantern(x,y,i);else drawPlant(x,y,side?-1:1,i);
   }
  }
- // Foreground overhang and vignette, without per-frame blur filters.
+}
+function drawCavernVignette(){
  const vignette=ctx.createLinearGradient(0,0,0,H);vignette.addColorStop(0,'#06131c77');vignette.addColorStop(.2,'#06131c00');vignette.addColorStop(.75,'#06131c00');vignette.addColorStop(1,'#06131c99');ctx.fillStyle=vignette;ctx.fillRect(0,0,W,H);
 }
 function drawRing(x,y,r,alpha){
@@ -718,20 +784,128 @@ function drawBoss(){
  const core=b.hurt>0?'#fff6d7':b.color;poly([[x,y-21],[x+15,y],[x,y+21],[x-15,y]],'#263541');poly([[x,y-16],[x+11,y],[x,y+16],[x-11,y]],core);poly([[x,y-8],[x+5,y],[x,y+8],[x-5,y]],'#fff4cf');
  if(b.attack){ctx.save();ctx.strokeStyle=b.color;ctx.globalAlpha=.4+Math.sin(time*18)*.2;ctx.setLineDash([4,5]);ctx.beginPath();ctx.arc(x,y,69,0,TAU);ctx.stroke();ctx.restore();}
 }
+function wrap(n,span){return (n%span+span)%span;}
+function drawTitleCavern(scroll){
+ drawCavernDepth(scroll,true);
+ for(let i=0;i<12;i++){
+  const x=W*(.12+rng(i+191)*.78),y=H+24-wrap(i*61+scroll*.66,H+65);
+  const width=10+rng(i+195)*25;
+  rect(x,y,width,6,pal.rock);rect(x,y,width,2,pal.edge);rect(x+3,y+6,width*.6,4,pal.back);
+ }
+}
+function drawOutgoingLayer(drawLayer,scroll,outgoing){
+ const nextBiome=biome,nextPalette=pal,nextBackground=backCache,nextWall=wallCache;
+ ({biome,pal,backCache,wallCache}=outgoing);
+ drawLayer(scroll);
+ biome=nextBiome;pal=nextPalette;backCache=nextBackground;wallCache=nextWall;
+}
+function seamHeight(x,y){
+ const step=Math.floor(x/20);
+ const arch=Math.pow(x/W*2-1,2)*54;
+ return y+Math.round((arch+Math.sin(step*.49)*11+(rng(step+462)-.5)*24)/3)*3;
+}
+function drawBiomeSeam(y){
+ const layer=foregroundCtx;
+ const thickness=H*.54;
+ foregroundCanvas.hidden=y>H+96||y+thickness+130<0;
+ if(foregroundCanvas.hidden)return;
+ layer.clearRect(0,0,W,H);
+ const slabs=[];
+ for(let x=-18,i=0;x<W+18;i++){
+  const width=18+Math.floor(rng(i+513)*9)*4;
+  const basin=Math.sin(x/W*Math.PI*2-.7)*H*.075;
+  const top=y+Math.round((basin+(rng(i+120)-.5)*64)/4)*4;
+  const bottom=y+thickness+Math.round((basin+(rng(i+220)-.5)*96)/4)*4;
+  slabs.push({x,width,top,bottom});
+  x+=width;
+ }
+ const shelf=new Path2D();
+ shelf.moveTo(slabs[0].x,slabs[0].top);
+ for(const slab of slabs){
+  shelf.lineTo(slab.x,slab.top);shelf.lineTo(slab.x+slab.width,slab.top);
+ }
+ for(let i=slabs.length-1;i>=0;i--){
+  const slab=slabs[i];
+  shelf.lineTo(slab.x+slab.width,slab.bottom);shelf.lineTo(slab.x,slab.bottom);
+ }
+ shelf.closePath();
+ layer.save();
+ // Feather the shadow beyond the stone without rounding off the pixel ledges.
+ layer.lineJoin='round';
+ for(const width of [28,19,11,5]){
+  layer.lineWidth=width;layer.strokeStyle='#04050919';layer.stroke(shelf);
+ }
+ const shade=layer.createLinearGradient(0,y-40,0,y+thickness+56);
+ shade.addColorStop(0,'#10131acc');shade.addColorStop(.24,'#080b11f5');
+ shade.addColorStop(.72,'#07090ff5');shade.addColorStop(1,'#181b22d9');
+ layer.fillStyle=shade;layer.fill(shelf);
+ layer.clip(shelf);
+ for(let i=0;i<slabs.length;i++){
+  const {x,width,top,bottom}=slabs[i];
+  const joint=top+(bottom-top)*(.25+rng(i+331)*.42);
+  layer.fillStyle=i%3===0?'#25293879':'#191e2966';
+  layer.fillRect(x,top,width-4,7+i%3*4);
+  layer.fillRect(x,top+8,8,joint-top);
+  layer.fillStyle='#02040788';
+  layer.fillRect(x+width-5,joint,5,bottom-joint);
+  layer.fillRect(x+width*.42,joint,Math.ceil(width*.58),4);
+  layer.fillRect(x+width*.42,joint-17,4,17);
+  layer.fillStyle=pal.rock+'72';
+  layer.fillRect(x+3,bottom-9,width-11,5);
+  if(i%3===0)layer.fillRect(x+12,bottom-16,Math.ceil(width*.36),4);
+ }
+ layer.restore();
+}
+function drawCrossingLayer(drawLayer,scroll,boundary,outgoing,step){
+ ctx.save();ctx.beginPath();ctx.moveTo(0,0);
+ for(let x=0;x<W;x+=20){
+  const y=seamHeight(x,boundary);
+  ctx.lineTo(x,y);ctx.lineTo(Math.min(x+20,W),y);
+ }
+ ctx.lineTo(W,0);ctx.closePath();
+ if(step==='walls'){
+  // Each texture gets its own slice. Transparent parts of a wall reveal the deep cavern.
+  ctx.save();ctx.clip();drawOutgoingLayer(drawLayer,scroll,outgoing);ctx.restore();
+  ctx.rect(0,0,W,H);ctx.clip('evenodd');
+  drawLayer(scroll);
+ }else{
+  ctx.clip();
+  drawOutgoingLayer(drawLayer,scroll,outgoing);
+ }
+ ctx.restore();
+}
 function drawTitle(){
- drawBackdrop(time*7,true);
+ let progress=titleTransition?(time-titleTransition.start)/titleCrossingDuration:0;
+ if(progress>=1){titleTransition=null;changeTitleBiome();progress=0;}
+ const scroll=reduced?0:titleScroll;
+ drawTitleCavern(scroll);
+ let foregroundY=0;
+ if(titleTransition){
+  const traveled=scroll-titleTransition.scrollStart;
+  const farBoundary=H+18-traveled*titleFarSpeed;
+  const wallBoundary=H+64-traveled*titleWallSpeed;
+  foregroundY=wallBoundary;
+  drawCrossingLayer(drawTitleCavern,scroll,farBoundary,titleTransition.outgoing,'depth');
+  drawCrossingLayer(drawCavernWalls,scroll,wallBoundary,titleTransition.outgoing,'walls');
+ }else drawCavernWalls(scroll);
+ drawCavernVignette();
  const x=W*.73,y=H*.51+Math.sin(time*1.3)*5;
- // Drifting fragments give the title scene depth without hiding the game identity.
- for(let i=0;i<5;i++){const xx=x+Math.sin(i*1.8)*105,yy=y+Math.cos(i*2.1)*100+Math.sin(time+i)*4;rect(xx,yy,15+i*2,7,pal.rock);rect(xx,yy,15+i*2,2,pal.edge);rect(xx+3,yy+7,9,5,pal.back);}
  drawHero(x,y,2.2,true);
- for(let i=0;i<9;i++){const yy=(time*24+i*38)%H;rect(x+Math.sin(i*5)*75,yy,1,2,'#79a39a');}
- // A small illuminated dais beneath the drifting explorer.
- rect(x-52,H*.78,104,6,pal.edge);rect(x-57,H*.78+6,114,11,pal.rock);rect(x-44,H*.78+17,88,9,pal.back);
- light(x,H*.77,100,pal.accent,.08);
+ if(!reduced){
+  const rush=Math.sin(progress*Math.PI);
+  for(let i=0;i<22;i++){
+   const px=rng(i+102)*W,py=H+20-wrap(i*79+scroll*(1.1+rng(i+191)*.7),H+50);
+   ctx.globalAlpha=.14+(.12+rng(i+71)*.17)*rush;
+   rect(px,py,1+i%2,4+i%5+13*rush,'#c7e4c5');
+  }
+  ctx.globalAlpha=1;
+ }
+ if(titleTransition)drawBiomeSeam(foregroundY);else foregroundCanvas.hidden=true;
 }
 function render(){
  ctx.imageSmoothingEnabled=false;
  if(state==='title'){drawTitle();return;}
+ if(!foregroundCanvas.hidden)foregroundCanvas.hidden=true;
  if(!player)return;
  ctx.save();if(shake>.2&&!reduced)ctx.translate(Math.round(rand(-shake,shake)),Math.round(rand(-shake,shake)));
  drawBackdrop(cam);
@@ -769,15 +943,16 @@ function unlockAudio(e){if(e.code==='KeyM'||e.target?.closest?.('#sound'))return
 addEventListener('pointerdown',unlockAudio,{capture:true});
 addEventListener('keydown',unlockAudio,{capture:true});
 updateSoundButton();
-$('start').onclick=reset;$('again').onclick=reset;$('restart').onclick=reset;$('resume').onclick=()=>startCountdown();$('pause-button').onclick=()=>state==='paused'?startCountdown():pause();$('sound').onclick=toggleSound;
-$('to-title').onclick=()=>{biome=0;pal=palettes[0];buildScenery();setState('title');};
+$('start').onclick=()=>reset(selectedLevel);$('again').onclick=()=>reset();$('restart').onclick=()=>reset();
+$('levels').onclick=e=>{const b=e.target.closest('[data-level]');if(b)selectLevel(Number(b.dataset.level));};$('dev-unlock').onclick=()=>{devUnlock=!devUnlock;if(!devUnlock&&!isUnlocked(selectedLevel))selectLevel(0);updateLevelMenu();};updateLevelMenu();$('resume').onclick=()=>startCountdown();$('pause-button').onclick=()=>state==='paused'?startCountdown():pause();$('sound').onclick=toggleSound;
+$('to-title').onclick=()=>{biome=selectedLevel;pal=palettes[biome];buildScenery();setState('title');updateLevelMenu();};
 $('upgrade-cards').onclick=e=>{const b=e.target.closest('[data-choice]');if(b)choose(Number(b.dataset.choice));};
 addEventListener('keydown',e=>{
  if((e.code==='Enter'||e.code==='Space')&&e.target?.closest?.('button'))return;
  if(['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Tab'].includes(e.code)&&e.code!=='Tab')e.preventDefault();
  if(e.repeat)return;
  if(e.code==='KeyM'){toggleSound();return;}if(e.code==='F3'){e.preventDefault();perfVisible=!perfVisible;return;}
- if(state==='title'){if(e.code==='Enter'||e.code==='Space')reset();return;}
+ if(state==='title'){if(e.code==='ArrowLeft')selectLevel(selectedLevel-1);else if(e.code==='ArrowRight')selectLevel(selectedLevel+1);else if(e.code==='Enter'||e.code==='Space')reset(selectedLevel);return;}
  if(state==='ended'){if(e.code==='Space')reset();return;}
  if(e.code==='Escape'||e.code==='KeyP'){if(state==='playing'||state==='countdown')pause();else if(state==='paused')startCountdown();return;}
  if(state==='upgrade'){if(/^Digit[123]$/.test(e.code))choose(Number(e.code.slice(-1))-1);return;}
@@ -797,7 +972,17 @@ Object.defineProperty(window,'downfall',{value:{get state(){return state;},get m
 let sampleTime=0,sampleFrames=0,sampleCpu=0;
 function frame(stamp){
  const realDt=last?Math.min((stamp-last)/1000,.04):1/60;last=stamp;const start=performance.now();
- update(realDt);render();const cost=performance.now()-start;
+ update(realDt);
+ if(state==='title'&&!reduced){
+  if(titleTransition){
+   const progress=clamp((time-titleTransition.start)/titleCrossingDuration,0,1);
+   // Integral of a raised cosine speed pulse, with idle speed at both ends.
+   const travel=progress-Math.sin(progress*TAU)/TAU;
+   titleScroll=titleTransition.scrollStart+titleIdleSpeed*titleCrossingDuration*progress+
+    (titleTransition.distance-titleIdleSpeed*titleCrossingDuration)*travel;
+  }else titleScroll+=realDt*titleIdleSpeed;
+ }
+ render();const cost=performance.now()-start;
  sampleTime+=realDt;sampleFrames++;sampleCpu+=cost;metrics.frames++;metrics.maxEntities=Math.max(metrics.maxEntities,entities.length);metrics.maxParticles=Math.max(metrics.maxParticles,particles.length);
  if(sampleTime>=1){metrics.cpuMs=sampleCpu/sampleFrames;metrics.fps=Math.round(sampleFrames/sampleTime);if(metrics.cpuMs>13)quality=0;else if(metrics.cpuMs<6)quality=1;sampleTime=0;sampleFrames=0;sampleCpu=0;}
  requestAnimationFrame(frame);
