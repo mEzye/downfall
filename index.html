@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#09191c">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23091e25'/%3E%3Cpath d='M12 4h8v14h6L16 29 6 18h6z' fill='%23e7ba70'/%3E%3C/svg%3E">
+  <title>DOWNFALL — У серце прірви</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="game" aria-label="DOWNFALL — гра про падіння">
+    <canvas id="world" aria-label="Ігрове поле"></canvas>
+    <div class="grain" aria-hidden="true"></div>
+    <div id="hud" hidden>
+      <div class="vitals"><div id="health" aria-label="Здоров’я"></div><div class="currency"><span class="gem">◆</span><b id="shards">0</b><span id="combo"></span></div></div>
+      <div class="depth"><small>ГЛИБИНА</small><div><b id="depth">0</b><span> м</span></div><div class="depth-track"><i id="depth-fill"></i></div><small id="next-gate">МУТАЦІЯ НА 250 М</small></div>
+      <div class="abilities"><span class="ability-label">РИВОК <kbd>SPACE</kbd></span><div id="charges"></div><span id="focus-label">ФОКУС <kbd>SHIFT</kbd></span><div class="focus-track"><i id="focus-fill"></i></div><div id="relics"></div></div>
+      <div class="biome"><span id="biome-name">ЗАТОНУЛИЙ ХРАМ</span><small id="biome-level">ШАР I</small></div>
+      <div id="hint" class="hint"> <span><kbd>A</kbd> <kbd>D</kbd> рух</span><span><kbd>SPACE</kbd> ривок крізь ворогів</span><span><kbd>SHIFT</kbd> уповільнення</span></div>
+      <div id="toast" role="status"></div>
+      <div id="coach" class="coach" hidden role="status"></div>
+      <div id="graze-notice" role="status">УХИЛЕННЯ <b>+20 ФОКУСУ</b></div>
+      <div id="boss-ui" hidden><div><span id="boss-name"></span><small id="boss-phase">ФАЗА I</small></div><div class="boss-track"><i id="boss-health"></i></div><small id="boss-attack"></small></div>
+    </div>
+    <div class="top-actions"><button id="sound" class="icon-btn" aria-label="Вимкнути звук" title="Звук · M">♪</button><button id="pause-button" class="icon-btn" aria-label="Пауза" title="Пауза · Esc" hidden>Ⅱ</button></div>
+    <section id="title" class="screen title-screen">
+      <div class="title-copy"><div class="eyebrow"><span class="rune">✧</span> РОУГЛАЙК У ВІЛЬНОМУ ПАДІННІ</div><h1><span>DOWN</span><span>FALL<i>↡</i></span></h1><p class="title-description">У серце прірви.</p><p class="title-sub">Пробивайся крізь потвор. Збирай мутації.<br>Дізнайся, що ховається на дні.</p><button id="start" class="primary">ПІРНУТИ ВНИЗ <span>↓</span></button><div class="start-hint"><kbd>ENTER</kbd> почати падіння</div><div class="best-line">РЕКОРД <b id="title-best">0 м</b></div></div>
+      <div class="title-place"><span class="tiny-diamond">◆</span><span>ЗАТОНУЛИЙ ХРАМ<small>ПЕРША ГЛИБИНА</small></span></div>
+      <div class="title-controls"><span><kbd>A</kbd><kbd>D</kbd> РУХ</span><span><kbd>SPACE</kbd> РИВОК</span><span><kbd>SHIFT</kbd> ФОКУС</span></div>
+    </section>
+    <section id="pause" class="screen shade" hidden><div class="menu"><span class="menu-mark">Ⅱ</span><h2>Пауза</h2><button id="resume" class="primary">ПРОДОВЖИТИ <span>↘</span></button><button id="restart" class="secondary">НОВЕ ПАДІННЯ</button><div class="pause-controls"><p><kbd>A</kbd> <kbd>D</kbd> або <kbd>←</kbd> <kbd>→</kbd> — керування в повітрі</p><p><kbd>SPACE</kbd> / <kbd>↓</kbd> — ривок униз</p><p><kbd>SHIFT</kbd> — уповільнення часу</p><p><kbd>ESC</kbd> — пауза · <kbd>M</kbd> — звук</p></div><p class="mechanic-note">Проминь світлий обідок ворога без дотику: +20 фокусу.<br>Гриб, призма й кільце підкидають угору.<br>Перший контакт дає заряд. A / D — рух у повітрі.<br>Вбивство ривком також повертає заряд.</p><div id="music-now"></div></div></section>
+    <section id="upgrade" class="screen shade" hidden><div class="upgrade-wrap"><div class="eyebrow">ПРІРВА ЗМІНЮЄ ТЕБЕ</div><h2>Обери мутацію</h2><p class="upgrade-sub">+1 заряд · +15 фокусу · Здоров’я не відновлюється</p><div id="upgrade-cards"></div><div class="upgrade-hint">Клавіші <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> або натисни на мутацію</div></div></section>
+    <section id="end" class="screen shade" hidden><div class="menu end-menu"><div class="eyebrow" id="end-eyebrow">ПРІРВА ЗАБРАЛА СВОЄ</div><h2 id="end-title">Ще одне падіння.</h2><div class="end-depth"><b id="end-depth">0</b><span>МЕТРІВ У ГЛИБИНУ</span></div><div class="end-stats"><div><small>УБИВСТВА</small><b id="end-kills">0</b></div><div><small>УЛАМКИ</small><b id="end-shards">0</b></div><div><small>КОМБО</small><b id="end-combo">0</b></div><div><small>ВІДСКОКИ</small><b id="end-bounces">0</b></div><div><small>БОСИ</small><b id="end-bosses">0/3</b></div></div><p id="end-record"></p><button id="again" class="primary">ПІРНУТИ ЗНОВУ <span>↓</span></button><button id="to-title" class="secondary">ДО ГОЛОВНОГО МЕНЮ</button></div></section>
+    <div id="countdown" hidden>3</div>
+    <div id="touch" hidden><div class="touch-move"><button id="left-touch" aria-label="Ліворуч">‹</button><button id="right-touch" aria-label="Праворуч">›</button></div><div class="touch-abilities"><button id="focus-touch" aria-label="Фокус">◎</button><button id="dash-touch" aria-label="Ривок">↓</button></div></div>
+  </main>
+  <script src="content.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
