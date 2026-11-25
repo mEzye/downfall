@@ -2,7 +2,7 @@
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
-const canvas = $('world'), ctx = canvas.getContext('2d', { alpha:false });
+const canvas = $('world');let ctx = canvas.getContext('2d', { alpha:false });
 const foregroundCanvas=$('title-foreground'),foregroundCtx=foregroundCanvas.getContext('2d');
 const TAU = Math.PI * 2, clamp = (n,a,b) => Math.max(a,Math.min(b,n)), rand = (a,b) => a+Math.random()*(b-a);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -22,7 +22,23 @@ const palettes=[
 let biome=0,pal=palettes[0],backCache=null,wallCache=null,glows={};
 let effects=[],coachTimer=0,grazeTimer=0;
 let selectedLevel=0,startingLevel=0,completedBosses=0,devUnlock=false,titleTransition=null;
-let titleScroll=0;
+let titleScroll=0,launch=null;
+function beginLaunch(){
+ if(state!=='title'||launch)return;
+ if(reduced){reset(selectedLevel);return;}
+ const level=selectedLevel,startY=H*.51+Math.sin(time*1.3)*5;
+ reset(level);setState('launch');show('hud',false);show('title',true);
+ launch={start:time,startY,pause:false,scene:makeCanvas(W,H)};
+ $('title').classList.add('launching');$('title').inert=true;keys.clear();heldTouch.clear();
+}
+function updateLaunch(){
+ if(!launch)return;
+ if(time-launch.start>=.6){
+  const shouldPause=launch.pause||document.hidden;launch=null;
+  $('title').classList.remove('launching');$('title').inert=false;
+  setState('playing');if(shouldPause)pause();
+ }
+}
 const titleCrossingDuration=1.25;
 const titleIdleSpeed=34;
 const titleFarSpeed=.54;
@@ -874,7 +890,7 @@ function drawCrossingLayer(drawLayer,scroll,boundary,outgoing,step){
  }
  ctx.restore();
 }
-function drawTitle(){
+function drawTitle(withHero=true){
  let progress=titleTransition?(time-titleTransition.start)/titleCrossingDuration:0;
  if(progress>=1){titleTransition=null;changeTitleBiome();progress=0;}
  const scroll=reduced?0:titleScroll;
@@ -890,7 +906,7 @@ function drawTitle(){
  }else drawCavernWalls(scroll);
  drawCavernVignette();
  const x=W*.73,y=H*.51+Math.sin(time*1.3)*5;
- drawHero(x,y,2.2,true);
+ if(withHero)drawHero(x,y,2.2,true);
  if(!reduced){
   const rush=Math.sin(progress*Math.PI);
   for(let i=0;i<22;i++){
@@ -902,8 +918,26 @@ function drawTitle(){
  }
  if(titleTransition)drawBiomeSeam(foregroundY);else foregroundCanvas.hidden=true;
 }
+function drawLaunch(){
+ const t=clamp((time-launch.start)/.6,0,1),e=t*t*(3-2*t);
+ const titleX=W*.73,titleY=launch.startY,targetX=player.x,targetY=player.y-cam;
+ const heroX=titleX+(targetX-titleX)*e,heroY=titleY+(targetY-titleY)*e;
+ // Gameplay fills the frame while its camera pulls back to normal scale.
+ ctx.fillStyle=pal.bg;ctx.fillRect(0,0,W,H);
+ ctx.save();const zoom=1+.38*(1-e);const tx=clamp(heroX-targetX*zoom,W*(1-zoom),0),ty=clamp(heroY-targetY*zoom,H*(1-zoom),0);ctx.translate(tx,ty);ctx.scale(zoom,zoom);drawBackdrop(cam);ctx.restore();
+ // The live title cave shares the hero's camera path and recedes into the gameplay cave.
+ const main=ctx;ctx=launch.scene.getContext('2d');ctx.imageSmoothingEnabled=false;drawTitle(false);ctx=main;
+ ctx.save();ctx.globalAlpha=1-clamp((e-.55)/.45,0,1);ctx.translate(heroX,heroY);ctx.scale(1-.3*e,1-.3*e);ctx.translate(-titleX,-titleY);ctx.drawImage(launch.scene,0,0);ctx.restore();
+ // Reveal the actual starting objects before controls are enabled.
+ if(e>.5){
+  ctx=launch.scene.getContext('2d');ctx.clearRect(0,0,W,H);for(const entity of entities)drawEntity(entity);ctx=main;
+  ctx.save();ctx.globalAlpha=clamp((e-.5)*2,0,1);ctx.drawImage(launch.scene,0,0);ctx.restore();
+ }
+ drawHero(heroX,heroY,2.2+(1.3-2.2)*e,true);
+}
 function render(){
  ctx.imageSmoothingEnabled=false;
+ if(launch){drawLaunch();return;}
  if(state==='title'){drawTitle();return;}
  if(!foregroundCanvas.hidden)foregroundCanvas.hidden=true;
  if(!player)return;
@@ -943,7 +977,7 @@ function unlockAudio(e){if(e.code==='KeyM'||e.target?.closest?.('#sound'))return
 addEventListener('pointerdown',unlockAudio,{capture:true});
 addEventListener('keydown',unlockAudio,{capture:true});
 updateSoundButton();
-$('start').onclick=()=>reset(selectedLevel);$('again').onclick=()=>reset();$('restart').onclick=()=>reset();
+$('start').onclick=beginLaunch;$('again').onclick=()=>reset();$('restart').onclick=()=>reset();
 $('levels').onclick=e=>{const b=e.target.closest('[data-level]');if(b)selectLevel(Number(b.dataset.level));};$('dev-unlock').onclick=()=>{devUnlock=!devUnlock;if(!devUnlock&&!isUnlocked(selectedLevel))selectLevel(0);updateLevelMenu();};updateLevelMenu();$('resume').onclick=()=>startCountdown();$('pause-button').onclick=()=>state==='paused'?startCountdown():pause();$('sound').onclick=toggleSound;
 $('to-title').onclick=()=>{biome=selectedLevel;pal=palettes[biome];buildScenery();setState('title');updateLevelMenu();};
 $('upgrade-cards').onclick=e=>{const b=e.target.closest('[data-choice]');if(b)choose(Number(b.dataset.choice));};
@@ -951,8 +985,9 @@ addEventListener('keydown',e=>{
  if((e.code==='Enter'||e.code==='Space')&&e.target?.closest?.('button'))return;
  if(['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Tab'].includes(e.code)&&e.code!=='Tab')e.preventDefault();
  if(e.repeat)return;
+ if(launch)return;
  if(e.code==='KeyM'){toggleSound();return;}if(e.code==='F3'){e.preventDefault();perfVisible=!perfVisible;return;}
- if(state==='title'){if(e.code==='ArrowLeft')selectLevel(selectedLevel-1);else if(e.code==='ArrowRight')selectLevel(selectedLevel+1);else if(e.code==='Enter'||e.code==='Space')reset(selectedLevel);return;}
+ if(state==='title'){if(e.code==='ArrowLeft')selectLevel(selectedLevel-1);else if(e.code==='ArrowRight')selectLevel(selectedLevel+1);else if(e.code==='Enter'||e.code==='Space')beginLaunch();return;}
  if(state==='ended'){if(e.code==='Space')reset();return;}
  if(e.code==='Escape'||e.code==='KeyP'){if(state==='playing'||state==='countdown')pause();else if(state==='paused')startCountdown();return;}
  if(state==='upgrade'){if(/^Digit[123]$/.test(e.code))choose(Number(e.code.slice(-1))-1);return;}
@@ -960,8 +995,8 @@ addEventListener('keydown',e=>{
  keys.add(e.code);if(e.code==='Space'||e.code==='ArrowDown'||e.code==='KeyS')dash();
 });
 addEventListener('keyup',e=>keys.delete(e.code));
-addEventListener('blur',()=>{keys.clear();heldTouch.clear();pause();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
+addEventListener('blur',()=>{keys.clear();heldTouch.clear();if(launch)launch.pause=true;pause();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(launch)launch.pause=true;pause();}});
 for(const [id,action] of [['left-touch','left'],['right-touch','right'],['focus-touch','focus'],['dash-touch','dash']]){
  const el=$(id);el.addEventListener('pointerdown',e=>{e.preventDefault();el.setPointerCapture(e.pointerId);if(action==='dash')dash();else heldTouch.add(action);});
  const release=e=>{e.preventDefault();heldTouch.delete(action);};el.addEventListener('pointerup',release);el.addEventListener('pointercancel',release);el.addEventListener('lostpointercapture',()=>heldTouch.delete(action));
@@ -972,8 +1007,8 @@ Object.defineProperty(window,'downfall',{value:{get state(){return state;},get m
 let sampleTime=0,sampleFrames=0,sampleCpu=0;
 function frame(stamp){
  const realDt=last?Math.min((stamp-last)/1000,.04):1/60;last=stamp;const start=performance.now();
- update(realDt);
- if(state==='title'&&!reduced){
+ update(realDt);updateLaunch();
+ if((state==='title'||launch)&&!reduced){
   if(titleTransition){
    const progress=clamp((time-titleTransition.start)/titleCrossingDuration,0,1);
    // Integral of a raised cosine speed pulse, with idle speed at both ends.
